@@ -43,7 +43,7 @@ app.get('/api/info', async (req, res) => {
 
         res.json({
             title: metadata.title,
-            thumbnail: metadata.thumbnail,
+            thumbnail: metadata.thumbnail || (metadata.thumbnails && metadata.thumbnails.length > 0 ? metadata.thumbnails[metadata.thumbnails.length - 1].url : null),
             duration: metadata.duration,
             formats: formats
         });
