@@ -53,6 +53,8 @@ app.get('/api/info', async (req, res) => {
     }
 });
 
+
+
 // Endpoint to download video
 app.get('/api/download', async (req, res) => {
     try {
@@ -65,34 +67,42 @@ app.get('/api/download', async (req, res) => {
         // Get title for filename
         const metadata = await ytDlpWrap.getVideoInfo(url);
         const title = (metadata.title || 'video').replace(/[^\w\s]/gi, '');
+        const ffmpegPath = require('ffmpeg-static');
+
+        console.log(`Starting download for: ${title} (Format: ${format})`);
 
         if (format === 'mp3') {
             res.header('Content-Disposition', `attachment; filename="${title}.mp3"`);
             res.header('Content-Type', 'audio/mpeg');
 
-            // Stream audio conversion
-            ytDlpWrap.execStream([
+            const stream = ytDlpWrap.execStream([
                 url,
                 '-x',
                 '--audio-format', 'mp3',
-                '-o', '-' // Output to stdout
-            ]).pipe(res);
+                '--ffmpeg-location', ffmpegPath,
+                '-o', '-'
+            ]);
+
+            stream.pipe(res);
+
+            stream.on('error', (err) => console.error('Stream error:', err));
+            stream.on('close', () => console.log('Download stream closed'));
 
         } else {
             res.header('Content-Disposition', `attachment; filename="${title}.mp4"`);
             res.header('Content-Type', 'video/mp4');
 
-            // Stream video
-            // For best compatibility, we ask for best video+audio that is mp4
-            // Note: -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" might require ffmpeg for merging
-            // yt-dlp can merge if ffmpeg is present. Render has ffmpeg usually.
-            // If not, we might need to fallback to single file.
-
-            ytDlpWrap.execStream([
+            const stream = ytDlpWrap.execStream([
                 url,
                 '-f', 'best[ext=mp4]/best',
+                '--ffmpeg-location', ffmpegPath,
                 '-o', '-'
-            ]).pipe(res);
+            ]);
+
+            stream.pipe(res);
+
+            stream.on('error', (err) => console.error('Stream error:', err));
+            stream.on('close', () => console.log('Download stream closed'));
         }
 
     } catch (error) {
