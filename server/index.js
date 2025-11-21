@@ -29,8 +29,10 @@ app.get('/api/info', async (req, res) => {
 
         const metadata = await ytDlpWrap.getVideoInfo(videoURL);
 
+        console.log('Metadata keys:', Object.keys(metadata));
+
         // Map yt-dlp format to our frontend expected format
-        const formats = metadata.formats.map(f => ({
+        const formats = (metadata.formats || []).map(f => ({
             itag: f.format_id, // Use format_id as itag
             quality: f.format_note || (f.height ? `${f.height}p` : 'unknown'),
             container: f.ext,
