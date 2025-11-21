@@ -64,7 +64,7 @@ app.get('/api/download', async (req, res) => {
 
         // Get title for filename
         const metadata = await ytDlpWrap.getVideoInfo(url);
-        const title = metadata.title.replace(/[^\w\s]/gi, '');
+        const title = (metadata.title || 'video').replace(/[^\w\s]/gi, '');
 
         if (format === 'mp3') {
             res.header('Content-Disposition', `attachment; filename="${title}.mp3"`);
