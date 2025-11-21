@@ -32,7 +32,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900 text-white font-sans flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 text-gray-900 font-sans flex flex-col items-center justify-center p-4">
 
       {/* Header */}
       <div className="mb-10 text-center">
@@ -42,29 +42,29 @@ function App() {
             YT Downloader
           </h1>
         </div>
-        <p className="text-gray-400">Download high-quality videos and audio instantly</p>
+        <p className="text-gray-600">Download high-quality videos and audio instantly</p>
       </div>
 
       {/* Main Card */}
-      <div className="w-full max-w-md bg-white/10 backdrop-blur-lg rounded-2xl p-6 shadow-2xl border border-white/10 relative">
+      <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl border border-gray-200 relative">
 
         {/* Settings Toggle */}
         <button
           onClick={() => setShowSettings(!showSettings)}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+          className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 transition-colors"
         >
           <Settings className="w-5 h-5" />
         </button>
 
         {/* Settings Panel */}
         {showSettings && (
-          <div className="mb-6 p-4 bg-black/20 rounded-xl border border-white/5">
-            <label className="block text-xs text-gray-400 mb-1">Backend URL</label>
+          <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <label className="block text-xs text-gray-600 mb-1">Backend URL</label>
             <input
               type="text"
               value={backendUrl}
               onChange={(e) => setBackendUrl(e.target.value)}
-              className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
+              className="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-purple-500"
               placeholder="http://localhost:3001"
             />
           </div>
@@ -77,7 +77,7 @@ function App() {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="Paste YouTube URL here..."
-            className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all"
+            className="flex-1 bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all"
           />
           <button
             onClick={fetchInfo}

@@ -27,45 +27,71 @@ app.get('/api/info', async (req, res) => {
             return res.status(400).json({ error: 'URL is required' });
         }
 
-        // Seal approach: Direct interaction with yt-dlp binary for maximum control
-        // We use --dump-json to get all metadata directly
+        // Direct spawn approach for Windows compatibility
         console.log('Fetching metadata for:', videoURL);
-        const stdout = await ytDlpWrap.execPromise([
+
+        const { spawn } = require('child_process');
+        const ytDlpProcess = spawn(binaryPath, [
             videoURL,
             '--dump-json',
             '--no-playlist',
             '--no-warnings'
         ]);
 
-        const metadata = JSON.parse(stdout);
+        let stdout = '';
+        let stderr = '';
 
-        // Log key metadata to debug
-        console.log('Metadata fetched successfully.');
-        console.log('Title:', metadata.title);
-        console.log('Thumbnail:', metadata.thumbnail);
-
-        // Map yt-dlp format to our frontend expected format
-        const formats = (metadata.formats || []).map(f => ({
-            itag: f.format_id,
-            quality: f.format_note || (f.height ? `${f.height}p` : 'unknown'),
-            container: f.ext,
-            hasAudio: f.acodec !== 'none' && f.acodec !== 'none',
-            hasVideo: f.vcodec !== 'none' && f.vcodec !== 'none',
-            url: f.url
-        })).filter(f =>
-            // Filter for useful formats (mp4/webm/m4a)
-            ['mp4', 'webm', 'm4a'].includes(f.container)
-        );
-
-        res.json({
-            title: metadata.title || 'Unknown Title',
-            thumbnail: metadata.thumbnail || (metadata.thumbnails ? metadata.thumbnails[metadata.thumbnails.length - 1].url : null),
-            duration: metadata.duration,
-            formats: formats
+        ytDlpProcess.stdout.on('data', (data) => {
+            stdout += data.toString();
         });
+
+        ytDlpProcess.stderr.on('data', (data) => {
+            stderr += data.toString();
+            console.error('yt-dlp stderr:', data.toString());
+        });
+
+        ytDlpProcess.on('close', (code) => {
+            if (code !== 0) {
+                console.error('yt-dlp exited with code:', code);
+                console.error('stderr:', stderr);
+                return res.status(500).json({ error: 'Failed to fetch video info', details: stderr });
+            }
+
+            try {
+                const metadata = JSON.parse(stdout);
+
+                // Log key metadata to debug
+                console.log('Metadata fetched successfully.');
+                console.log('Title:', metadata.title);
+                console.log('Thumbnail:', metadata.thumbnail);
+
+                // Map yt-dlp format to our frontend expected format
+                const formats = (metadata.formats || []).map(f => ({
+                    itag: f.format_id,
+                    quality: f.format_note || (f.height ? `${f.height}p` : 'unknown'),
+                    container: f.ext,
+                    hasAudio: f.acodec !== 'none' && f.acodec !== 'none',
+                    hasVideo: f.vcodec !== 'none' && f.vcodec !== 'none',
+                    url: f.url
+                })).filter(f =>
+                    // Filter for useful formats (mp4/webm/m4a)
+                    ['mp4', 'webm', 'm4a'].includes(f.container)
+                );
+
+                res.json({
+                    title: metadata.title || 'Unknown Title',
+                    thumbnail: metadata.thumbnail || (metadata.thumbnails ? metadata.thumbnails[metadata.thumbnails.length - 1].url : null),
+                    duration: metadata.duration,
+                    formats: formats
+                });
+            } catch (parseError) {
+                console.error('Error parsing JSON:', parseError);
+                res.status(500).json({ error: 'Failed to parse video info', details: parseError.message });
+            }
+        });
+
     } catch (error) {
         console.error('Error fetching video info:', error);
-        // Try to send a helpful error message
         res.status(500).json({ error: 'Failed to fetch video info', details: error.message });
     }
 });
