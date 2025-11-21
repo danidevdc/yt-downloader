@@ -27,29 +27,46 @@ app.get('/api/info', async (req, res) => {
             return res.status(400).json({ error: 'URL is required' });
         }
 
-        const metadata = await ytDlpWrap.getVideoInfo(videoURL);
+        // Seal approach: Direct interaction with yt-dlp binary for maximum control
+        // We use --dump-json to get all metadata directly
+        console.log('Fetching metadata for:', videoURL);
+        const stdout = await ytDlpWrap.execPromise([
+            videoURL,
+            '--dump-json',
+            '--no-playlist',
+            '--no-warnings'
+        ]);
 
-        console.log('Metadata keys:', Object.keys(metadata));
+        const metadata = JSON.parse(stdout);
+
+        // Log key metadata to debug
+        console.log('Metadata fetched successfully.');
+        console.log('Title:', metadata.title);
+        console.log('Thumbnail:', metadata.thumbnail);
 
         // Map yt-dlp format to our frontend expected format
         const formats = (metadata.formats || []).map(f => ({
-            itag: f.format_id, // Use format_id as itag
+            itag: f.format_id,
             quality: f.format_note || (f.height ? `${f.height}p` : 'unknown'),
             container: f.ext,
-            hasAudio: f.acodec !== 'none',
-            hasVideo: f.vcodec !== 'none',
+            hasAudio: f.acodec !== 'none' && f.acodec !== 'none',
+            hasVideo: f.vcodec !== 'none' && f.vcodec !== 'none',
             url: f.url
-        })).filter(f => f.container === 'mp4' || f.container === 'm4a' || f.container === 'webm');
+        })).filter(f =>
+            // Filter for useful formats (mp4/webm/m4a)
+            ['mp4', 'webm', 'm4a'].includes(f.container)
+        );
 
         res.json({
-            title: metadata.title,
-            thumbnail: metadata.thumbnail || (metadata.thumbnails && metadata.thumbnails.length > 0 ? metadata.thumbnails[metadata.thumbnails.length - 1].url : null),
+            title: metadata.title || 'Unknown Title',
+            thumbnail: metadata.thumbnail || (metadata.thumbnails ? metadata.thumbnails[metadata.thumbnails.length - 1].url : null),
             duration: metadata.duration,
             formats: formats
         });
     } catch (error) {
         console.error('Error fetching video info:', error);
-        res.status(500).json({ error: 'Failed to fetch video info' });
+        // Try to send a helpful error message
+        res.status(500).json({ error: 'Failed to fetch video info', details: error.message });
     }
 });
 
