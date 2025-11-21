@@ -9,27 +9,12 @@ const PORT = process.env.PORT || 3001;
 
 // Initialize yt-dlp
 const ytDlpWrap = new YTDlpWrap();
+const binaryName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+const binaryPath = path.join(__dirname, binaryName);
 
-// Ensure binary exists
-const ensureBinary = async () => {
-    const binaryPath = path.join(__dirname, 'yt-dlp');
-    if (!fs.existsSync(binaryPath)) {
-        console.log('Downloading yt-dlp binary...');
-        try {
-            await ytDlpWrap.downloadFromGithub(binaryPath);
-            console.log('yt-dlp binary downloaded successfully');
-            ytDlpWrap.setBinaryPath(binaryPath);
-        } catch (err) {
-            console.error('Failed to download yt-dlp:', err);
-        }
-    } else {
-        console.log('yt-dlp binary already exists');
-        ytDlpWrap.setBinaryPath(binaryPath);
-    }
-};
-
-// Run check on start
-ensureBinary();
+// Set binary path
+console.log(`Using yt-dlp binary at: ${binaryPath}`);
+ytDlpWrap.setBinaryPath(binaryPath);
 
 app.use(cors());
 app.use(express.json());
