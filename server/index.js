@@ -62,55 +62,7 @@ app.get('/api/download', async (req, res) => {
 
         if (!url) {
             return res.status(400).send('URL is required');
-        }
 
-        // Get title for filename
-        const metadata = await ytDlpWrap.getVideoInfo(url);
-        const title = (metadata.title || 'video').replace(/[^\w\s]/gi, '');
-        const ffmpegPath = require('ffmpeg-static');
-
-        console.log(`Starting download for: ${title} (Format: ${format})`);
-
-        if (format === 'mp3') {
-            res.header('Content-Disposition', `attachment; filename="${title}.mp3"`);
-            res.header('Content-Type', 'audio/mpeg');
-
-            const stream = ytDlpWrap.execStream([
-                url,
-                '-x',
-                '--audio-format', 'mp3',
-                '--ffmpeg-location', ffmpegPath,
-                '-o', '-'
-            ]);
-
-            stream.pipe(res);
-
-            stream.on('error', (err) => console.error('Stream error:', err));
-            stream.on('close', () => console.log('Download stream closed'));
-
-        } else {
-            res.header('Content-Disposition', `attachment; filename="${title}.mp4"`);
-            res.header('Content-Type', 'video/mp4');
-
-            const stream = ytDlpWrap.execStream([
-                url,
-                '-f', 'best[ext=mp4]/best',
-                '--ffmpeg-location', ffmpegPath,
-                '-o', '-'
-            ]);
-
-            stream.pipe(res);
-
-            stream.on('error', (err) => console.error('Stream error:', err));
-            stream.on('close', () => console.log('Download stream closed'));
-        }
-
-    } catch (error) {
-        console.error('Download error:', error);
-        if (!res.headersSent) res.status(500).send('Download failed');
-    }
-});
-
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+            app.listen(PORT, () => {
+                console.log(`Server running on port ${PORT}`);
+            });
