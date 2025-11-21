@@ -5,7 +5,7 @@ function App() {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [videoInfo, setVideoInfo] = useState(null);
-  const [backendUrl, setBackendUrl] = useState('http://localhost:3001'); // Default local
+  const [backendUrl, setBackendUrl] = useState(import.meta.env.PROD ? 'https://yt-downloader-backend-vrx7.onrender.com' : 'http://localhost:3001');
   const [showSettings, setShowSettings] = useState(false);
 
   const fetchInfo = async () => {
