@@ -1,14 +1,35 @@
 const express = require('express');
 const cors = require('cors');
-const ytdl = require('@distube/ytdl-core');
-const ffmpeg = require('fluent-ffmpeg');
-const ffmpegPath = require('ffmpeg-static');
+const YTDlpWrap = require('yt-dlp-wrap').default;
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Configure ffmpeg to use the static binary
-ffmpeg.setFfmpegPath(ffmpegPath);
+// Initialize yt-dlp
+const ytDlpWrap = new YTDlpWrap();
+
+// Ensure binary exists
+const ensureBinary = async () => {
+    const binaryPath = path.join(__dirname, 'yt-dlp');
+    if (!fs.existsSync(binaryPath)) {
+        console.log('Downloading yt-dlp binary...');
+        try {
+            await ytDlpWrap.downloadFromGithub(binaryPath);
+            console.log('yt-dlp binary downloaded successfully');
+            ytDlpWrap.setBinaryPath(binaryPath);
+        } catch (err) {
+            console.error('Failed to download yt-dlp:', err);
+        }
+    } else {
+        console.log('yt-dlp binary already exists');
+        ytDlpWrap.setBinaryPath(binaryPath);
+    }
+};
+
+// Run check on start
+ensureBinary();
 
 app.use(cors());
 app.use(express.json());
@@ -17,24 +38,27 @@ app.use(express.json());
 app.get('/api/info', async (req, res) => {
     try {
         const videoURL = req.query.url;
-        if (!ytdl.validateURL(videoURL)) {
-            return res.status(400).json({ error: 'Invalid YouTube URL' });
+        if (!videoURL) {
+            return res.status(400).json({ error: 'URL is required' });
         }
 
-        const info = await ytdl.getInfo(videoURL);
-        const formats = ytdl.filterFormats(info.formats, 'videoandaudio');
+        const metadata = await ytDlpWrap.getVideoInfo(videoURL);
+
+        // Map yt-dlp format to our frontend expected format
+        const formats = metadata.formats.map(f => ({
+            itag: f.format_id, // Use format_id as itag
+            quality: f.format_note || (f.height ? `${f.height}p` : 'unknown'),
+            container: f.ext,
+            hasAudio: f.acodec !== 'none',
+            hasVideo: f.vcodec !== 'none',
+            url: f.url
+        })).filter(f => f.container === 'mp4' || f.container === 'm4a' || f.container === 'webm');
 
         res.json({
-            title: info.videoDetails.title,
-            thumbnail: info.videoDetails.thumbnails[info.videoDetails.thumbnails.length - 1].url,
-            duration: info.videoDetails.lengthSeconds,
-            formats: formats.map(f => ({
-                itag: f.itag,
-                quality: f.qualityLabel,
-                container: f.container,
-                hasAudio: f.hasAudio,
-                hasVideo: f.hasVideo
-            }))
+            title: metadata.title,
+            thumbnail: metadata.thumbnail,
+            duration: metadata.duration,
+            formats: formats
         });
     } catch (error) {
         console.error('Error fetching video info:', error);
@@ -45,38 +69,43 @@ app.get('/api/info', async (req, res) => {
 // Endpoint to download video
 app.get('/api/download', async (req, res) => {
     try {
-        const { url, format, quality } = req.query;
+        const { url, format } = req.query;
 
-        if (!ytdl.validateURL(url)) {
-            return res.status(400).send('Invalid URL');
+        if (!url) {
+            return res.status(400).send('URL is required');
         }
 
-        const info = await ytdl.getInfo(url);
-        const title = info.videoDetails.title.replace(/[^\w\s]/gi, '');
+        // Get title for filename
+        const metadata = await ytDlpWrap.getVideoInfo(url);
+        const title = metadata.title.replace(/[^\w\s]/gi, '');
 
-        res.header('Content-Disposition', `attachment; filename="${title}.mp4"`);
-
-        // If audio only requested (example logic) or specific format
         if (format === 'mp3') {
             res.header('Content-Disposition', `attachment; filename="${title}.mp3"`);
-            ffmpeg(ytdl(url, { quality: 'highestaudio' }))
-                .format('mp3')
-                .on('error', (err) => {
-                    console.error('FFmpeg error:', err);
-                    if (!res.headersSent) res.status(500).send('Conversion failed');
-                })
-                .pipe(res, { end: true });
-        } else {
-            // Default to highest video+audio
-            // Note: ytdl-core 'highest' often separates video/audio streams for high quality (1080p+).
-            // For simplicity in this prototype, we'll use 'highest' which might be a container with both if available,
-            // or we might need to merge. For now, let's try standard download.
-            // To ensure audio+video in one file for high res, we usually need to merge streams.
-            // Let's implement a simple merge if quality is high, or just standard pipe.
+            res.header('Content-Type', 'audio/mpeg');
 
-            // Simple version: just pipe the stream.
-            ytdl(url, { quality: 'highest' })
-                .pipe(res);
+            // Stream audio conversion
+            ytDlpWrap.execStream([
+                url,
+                '-x',
+                '--audio-format', 'mp3',
+                '-o', '-' // Output to stdout
+            ]).pipe(res);
+
+        } else {
+            res.header('Content-Disposition', `attachment; filename="${title}.mp4"`);
+            res.header('Content-Type', 'video/mp4');
+
+            // Stream video
+            // For best compatibility, we ask for best video+audio that is mp4
+            // Note: -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" might require ffmpeg for merging
+            // yt-dlp can merge if ffmpeg is present. Render has ffmpeg usually.
+            // If not, we might need to fallback to single file.
+
+            ytDlpWrap.execStream([
+                url,
+                '-f', 'best[ext=mp4]/best',
+                '-o', '-'
+            ]).pipe(res);
         }
 
     } catch (error) {
