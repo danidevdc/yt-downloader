@@ -91,14 +91,19 @@ function App() {
         {/* Video Info & Download Options */}
         {videoInfo && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="relative aspect-video rounded-xl overflow-hidden mb-4 shadow-lg group">
+            <div className="relative aspect-video rounded-xl overflow-hidden mb-4 shadow-lg group bg-black">
               <img
-                src={videoInfo.thumbnail}
-                alt={videoInfo.title}
-                className="w-full h-full object-cover"
+                src={videoInfo.thumbnail || 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=1000&auto=format&fit=crop'}
+                alt={videoInfo.title || 'YouTube Video'}
+                className="w-full h-full object-cover opacity-90"
+                onError={(e) => {
+                  e.target.src = 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=1000&auto=format&fit=crop';
+                }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-4">
-                <h3 className="font-semibold line-clamp-2 text-sm">{videoInfo.title}</h3>
+                <h3 className="font-semibold line-clamp-2 text-sm text-white">
+                  {videoInfo.title || 'Video Found (No Title Available)'}
+                </h3>
               </div>
             </div>
 
