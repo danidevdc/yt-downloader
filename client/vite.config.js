@@ -5,4 +5,5 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: '/yt-downloader/', // Relative base path for GitHub Pages
+  // Trigger deployment
 })
