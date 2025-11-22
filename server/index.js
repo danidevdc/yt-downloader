@@ -27,7 +27,7 @@ app.get('/api/info', async (req, res) => {
             return res.status(400).json({ error: 'URL is required' });
         }
 
-        // Direct spawn approach for Windows compatibility
+        // Direct spawn approach for better compatibility
         console.log('Fetching metadata for:', videoURL);
 
         const { spawn } = require('child_process');
@@ -35,7 +35,8 @@ app.get('/api/info', async (req, res) => {
             videoURL,
             '--dump-json',
             '--no-playlist',
-            '--no-warnings'
+            '--no-warnings',
+            '--quiet'  // Suppress progress output
         ]);
 
         let stdout = '';
@@ -58,7 +59,31 @@ app.get('/api/info', async (req, res) => {
             }
 
             try {
-                const metadata = JSON.parse(stdout);
+                // Extract only the JSON part (last complete JSON object)
+                // yt-dlp might output progress lines before the JSON
+                const lines = stdout.trim().split('\n');
+                let jsonLine = '';
+
+                // Find the line that starts with { and is valid JSON
+                for (let i = lines.length - 1; i >= 0; i--) {
+                    const line = lines[i].trim();
+                    if (line.startsWith('{')) {
+                        try {
+                            JSON.parse(line); // Test if it's valid JSON
+                            jsonLine = line;
+                            break;
+                        } catch (e) {
+                            continue;
+                        }
+                    }
+                }
+
+                if (!jsonLine) {
+                    console.error('No valid JSON found in stdout:', stdout.substring(0, 500));
+                    return res.status(500).json({ error: 'No valid JSON in response', details: 'yt-dlp did not return valid metadata' });
+                }
+
+                const metadata = JSON.parse(jsonLine);
 
                 // Log key metadata to debug
                 console.log('Metadata fetched successfully.');
@@ -70,8 +95,8 @@ app.get('/api/info', async (req, res) => {
                     itag: f.format_id,
                     quality: f.format_note || (f.height ? `${f.height}p` : 'unknown'),
                     container: f.ext,
-                    hasAudio: f.acodec !== 'none' && f.acodec !== 'none',
-                    hasVideo: f.vcodec !== 'none' && f.vcodec !== 'none',
+                    hasAudio: f.acodec !== 'none',
+                    hasVideo: f.vcodec !== 'none',
                     url: f.url
                 })).filter(f =>
                     // Filter for useful formats (mp4/webm/m4a)
@@ -86,6 +111,7 @@ app.get('/api/info', async (req, res) => {
                 });
             } catch (parseError) {
                 console.error('Error parsing JSON:', parseError);
+                console.error('stdout was:', stdout.substring(0, 500));
                 res.status(500).json({ error: 'Failed to parse video info', details: parseError.message });
             }
         });
@@ -95,12 +121,6 @@ app.get('/api/info', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch video info', details: error.message });
     }
 });
-
-
-
-
-
-
 
 // Endpoint to download video
 app.get('/api/download', async (req, res) => {
