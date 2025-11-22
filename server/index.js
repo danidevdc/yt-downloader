@@ -68,7 +68,9 @@ app.get('/api/info', async (req, res) => {
             '--dump-json',
             '--no-playlist',
             '--no-warnings',
-            '--no-check-certificates'
+            '--no-check-certificates',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            '--referer', 'https://www.youtube.com/'
         ], {
             stdio: ['ignore', 'pipe', 'pipe']  // stdin, stdout, stderr
         });
@@ -227,7 +229,11 @@ app.get('/api/download', async (req, res) => {
             ];
         }
 
-        const ytDlpProcess = spawn(binaryPath, args);
+        const ytDlpProcess = spawn(binaryPath, [
+            ...args,
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            '--referer', 'https://www.youtube.com/'
+        ]);
 
         ytDlpProcess.stdout.pipe(res);
 
