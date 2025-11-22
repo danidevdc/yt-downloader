@@ -3,7 +3,7 @@ const cors = require('cors');
 const YTDlpWrap = require('yt-dlp-wrap').default;
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -31,6 +31,36 @@ app.get('/api/info', async (req, res) => {
         console.log('Fetching metadata for:', videoURL);
         console.log('Binary path:', binaryPath);
         console.log('Binary exists:', fs.existsSync(binaryPath));
+
+        // Diagnostic checks
+        try {
+            // Check file details
+            if (process.platform !== 'win32') {
+                try {
+                    const lsOutput = execSync(`ls -l "${binaryPath}"`).toString();
+                    console.log('Binary permissions:', lsOutput.trim());
+                } catch (e) {
+                    console.log('ls failed:', e.message);
+                }
+            }
+
+            // Check version
+            try {
+                const versionOutput = execSync(`"${binaryPath}" --version`).toString();
+                console.log('yt-dlp version:', versionOutput.trim());
+            } catch (verErr) {
+                console.error('Version check failed:', verErr.message);
+                // If version check fails, try to print first few bytes of file to see if it's HTML or something
+                try {
+                    const headOutput = execSync(`head -c 50 "${binaryPath}"`).toString();
+                    console.log('File head:', headOutput);
+                } catch (headErr) {
+                    console.log('head failed:', headErr.message);
+                }
+            }
+        } catch (diagErr) {
+            console.error('Diagnostics failed:', diagErr);
+        }
 
         // Spawn yt-dlp process
         const ytDlpProcess = spawn(binaryPath, [
