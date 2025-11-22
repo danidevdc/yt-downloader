@@ -17,6 +17,19 @@ const binaryPath = path.join(__dirname, binaryName);
 console.log(`Using yt-dlp binary at: ${binaryPath}`);
 ytDlpWrap.setBinaryPath(binaryPath);
 
+// Handle Cookies for YouTube Auth
+const cookiesPath = path.join(__dirname, 'cookies.txt');
+if (process.env.YOUTUBE_COOKIES) {
+    try {
+        fs.writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES);
+        console.log('Cookies file created successfully from environment variable.');
+    } catch (err) {
+        console.error('Error creating cookies file:', err);
+    }
+} else {
+    console.warn('WARNING: No YOUTUBE_COOKIES environment variable found. YouTube might block requests.');
+}
+
 app.use(cors());
 app.use(express.json());
 
@@ -62,8 +75,8 @@ app.get('/api/info', async (req, res) => {
             console.error('Diagnostics failed:', diagErr);
         }
 
-        // Spawn yt-dlp process
-        const ytDlpProcess = spawn(binaryPath, [
+        // Prepare args
+        const args = [
             videoURL,
             '--dump-json',
             '--no-playlist',
@@ -71,7 +84,14 @@ app.get('/api/info', async (req, res) => {
             '--no-check-certificates',
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--referer', 'https://www.youtube.com/'
-        ], {
+        ];
+
+        if (fs.existsSync(cookiesPath)) {
+            args.push('--cookies', cookiesPath);
+        }
+
+        // Spawn yt-dlp process
+        const ytDlpProcess = spawn(binaryPath, args, {
             stdio: ['ignore', 'pipe', 'pipe']  // stdin, stdout, stderr
         });
 
@@ -229,11 +249,17 @@ app.get('/api/download', async (req, res) => {
             ];
         }
 
-        const ytDlpProcess = spawn(binaryPath, [
-            ...args,
+        // Add common args
+        args.push(
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--referer', 'https://www.youtube.com/'
-        ]);
+        );
+
+        if (fs.existsSync(cookiesPath)) {
+            args.push('--cookies', cookiesPath);
+        }
+
+        const ytDlpProcess = spawn(binaryPath, args);
 
         ytDlpProcess.stdout.pipe(res);
 
