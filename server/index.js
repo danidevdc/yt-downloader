@@ -3,6 +3,7 @@ const cors = require('cors');
 const YTDlpWrap = require('yt-dlp-wrap').default;
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -28,91 +29,132 @@ app.get('/api/info', async (req, res) => {
         }
 
         console.log('Fetching metadata for:', videoURL);
+        console.log('Binary path:', binaryPath);
+        console.log('Binary exists:', fs.existsSync(binaryPath));
 
-        try {
-            // Use execPromise which handles output better
-            const stdout = await ytDlpWrap.execPromise([
-                videoURL,
-                '--dump-json',
-                '--no-playlist',
-                '--no-warnings',
-                '--no-check-certificates'  // Skip SSL verification which can cause issues
-            ]);
+        // Spawn yt-dlp process
+        const ytDlpProcess = spawn(binaryPath, [
+            videoURL,
+            '--dump-json',
+            '--no-playlist',
+            '--no-warnings',
+            '--no-check-certificates'
+        ], {
+            stdio: ['ignore', 'pipe', 'pipe']  // stdin, stdout, stderr
+        });
 
-            console.log('Raw stdout length:', stdout.length);
-            console.log('First 200 chars:', stdout.substring(0, 200));
+        let stdout = '';
+        let stderr = '';
 
-            // Try to parse the entire stdout as JSON first
-            let metadata;
+        ytDlpProcess.stdout.on('data', (data) => {
+            stdout += data.toString();
+        });
+
+        ytDlpProcess.stderr.on('data', (data) => {
+            stderr += data.toString();
+        });
+
+        ytDlpProcess.on('error', (error) => {
+            console.error('Failed to start yt-dlp process:', error);
+            return res.status(500).json({
+                error: 'Failed to start yt-dlp',
+                details: error.message
+            });
+        });
+
+        ytDlpProcess.on('close', (code) => {
+            console.log('yt-dlp exited with code:', code);
+            console.log('stdout length:', stdout.length);
+            console.log('stderr length:', stderr.length);
+            console.log('First 500 chars of stdout:', stdout.substring(0, 500));
+            console.log('First 500 chars of stderr:', stderr.substring(0, 500));
+
+            if (code !== 0) {
+                console.error('yt-dlp failed with code:', code);
+                return res.status(500).json({
+                    error: 'yt-dlp execution failed',
+                    details: stderr || 'No error details available',
+                    exitCode: code
+                });
+            }
+
+            if (!stdout || stdout.trim().length === 0) {
+                console.error('No output from yt-dlp');
+                return res.status(500).json({
+                    error: 'No output from yt-dlp',
+                    details: stderr || 'yt-dlp produced no output',
+                    exitCode: code
+                });
+            }
+
             try {
-                metadata = JSON.parse(stdout);
-            } catch (e) {
-                // If that fails, try to find a valid JSON line
-                const lines = stdout.trim().split('\n');
-                let jsonLine = '';
+                // Try to parse the entire stdout as JSON first
+                let metadata;
+                try {
+                    metadata = JSON.parse(stdout);
+                } catch (e) {
+                    // If that fails, try to find a valid JSON line
+                    const lines = stdout.trim().split('\n');
 
-                for (let i = lines.length - 1; i >= 0; i--) {
-                    const line = lines[i].trim();
-                    if (line.startsWith('{')) {
-                        try {
-                            metadata = JSON.parse(line);
-                            jsonLine = line;
-                            break;
-                        } catch (parseErr) {
-                            continue;
+                    for (let i = lines.length - 1; i >= 0; i--) {
+                        const line = lines[i].trim();
+                        if (line.startsWith('{')) {
+                            try {
+                                metadata = JSON.parse(line);
+                                break;
+                            } catch (parseErr) {
+                                continue;
+                            }
                         }
+                    }
+
+                    if (!metadata) {
+                        console.error('Could not parse JSON from stdout');
+                        return res.status(500).json({
+                            error: 'Failed to parse video info',
+                            details: 'No valid JSON found in yt-dlp output',
+                            stdout: stdout.substring(0, 1000),
+                            stderr: stderr.substring(0, 1000)
+                        });
                     }
                 }
 
-                if (!metadata) {
-                    console.error('Could not parse JSON from stdout');
-                    console.error('Full stdout:', stdout);
-                    return res.status(500).json({
-                        error: 'Failed to parse video info',
-                        details: 'No valid JSON found in yt-dlp output'
-                    });
-                }
+                // Log key metadata to debug
+                console.log('Metadata fetched successfully.');
+                console.log('Title:', metadata.title);
+
+                // Map yt-dlp format to our frontend expected format
+                const formats = (metadata.formats || []).map(f => ({
+                    itag: f.format_id,
+                    quality: f.format_note || (f.height ? `${f.height}p` : 'unknown'),
+                    container: f.ext,
+                    hasAudio: f.acodec !== 'none',
+                    hasVideo: f.vcodec !== 'none',
+                    url: f.url
+                })).filter(f =>
+                    ['mp4', 'webm', 'm4a'].includes(f.container)
+                );
+
+                res.json({
+                    title: metadata.title || 'Unknown Title',
+                    thumbnail: metadata.thumbnail || (metadata.thumbnails ? metadata.thumbnails[metadata.thumbnails.length - 1].url : null),
+                    duration: metadata.duration,
+                    formats: formats
+                });
+
+            } catch (parseError) {
+                console.error('Error parsing JSON:', parseError);
+                return res.status(500).json({
+                    error: 'Failed to parse video info',
+                    details: parseError.message,
+                    stdout: stdout.substring(0, 1000)
+                });
             }
-
-            // Log key metadata to debug
-            console.log('Metadata fetched successfully.');
-            console.log('Title:', metadata.title);
-            console.log('Thumbnail:', metadata.thumbnail);
-
-            // Map yt-dlp format to our frontend expected format
-            const formats = (metadata.formats || []).map(f => ({
-                itag: f.format_id,
-                quality: f.format_note || (f.height ? `${f.height}p` : 'unknown'),
-                container: f.ext,
-                hasAudio: f.acodec !== 'none',
-                hasVideo: f.vcodec !== 'none',
-                url: f.url
-            })).filter(f =>
-                // Filter for useful formats (mp4/webm/m4a)
-                ['mp4', 'webm', 'm4a'].includes(f.container)
-            );
-
-            res.json({
-                title: metadata.title || 'Unknown Title',
-                thumbnail: metadata.thumbnail || (metadata.thumbnails ? metadata.thumbnails[metadata.thumbnails.length - 1].url : null),
-                duration: metadata.duration,
-                formats: formats
-            });
-
-        } catch (ytdlpError) {
-            console.error('yt-dlp execution error:', ytdlpError);
-            console.error('Error message:', ytdlpError.message);
-            console.error('Error stack:', ytdlpError.stack);
-
-            return res.status(500).json({
-                error: 'Failed to fetch video info',
-                details: ytdlpError.message || 'yt-dlp execution failed'
-            });
-        }
+        });
 
     } catch (error) {
-        console.error('Error fetching video info:', error);
-        res.status(500).json({ error: 'Failed to fetch video info', details: error.message });
+        console.error('Error in /api/info:', error);
+        res.status(500).json({ error: 'Server error', details: error.message });
     }
 });
 
@@ -129,7 +171,6 @@ app.get('/api/download', async (req, res) => {
         const metadata = await ytDlpWrap.getVideoInfo(url);
         const title = (metadata.title || 'video').replace(/[^\w\s]/gi, '');
         const ffmpegPath = require('ffmpeg-static');
-        const { spawn } = require('child_process');
 
         console.log(`Starting download for: ${title} (Format: ${format})`);
         console.log(`FFmpeg path: ${ffmpegPath}`);
